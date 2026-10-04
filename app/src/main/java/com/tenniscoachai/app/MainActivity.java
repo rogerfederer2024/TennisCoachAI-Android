@@ -8,15 +8,19 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
-    private static final String APP_URL = "https://ai-tennis-coach.netlify.app/";
+
+    private static final String APP_URL = "https://tenniscoachai.it/";
     private WebView webView;
 
-    @Override protected void onCreate(Bundle savedInstanceState) {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         webView = new WebView(this);
         setContentView(webView);
 
@@ -29,24 +33,79 @@ public class MainActivity extends AppCompatActivity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
 
         webView.setWebChromeClient(new WebChromeClient());
+
         webView.setWebViewClient(new WebViewClient() {
-            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+
+            @Override
+            public boolean shouldOverrideUrlLoading(
+                    WebView view,
+                    WebResourceRequest request) {
+
                 Uri uri = request.getUrl();
                 String host = uri.getHost();
-                if (host != null && (host.equals("ai-tennis-coach.netlify.app") || host.endsWith(".netlify.app"))) {
+
+                if (host == null) {
                     return false;
                 }
-                startActivity(new Intent(Intent.ACTION_VIEW, uri));
-                return true;
+
+                // Tennis Coach AI: resta sempre dentro l'app
+                if (host.equals("tenniscoachai.it")
+                        || host.equals("www.tenniscoachai.it")
+                        || host.equals("ai-tennis-coach.netlify.app")
+                        || host.endsWith(".netlify.app")) {
+
+                    return false;
+                }
+
+                // Autenticazione Google / Supabase:
+                // rimane nella WebView così il callback può
+                // tornare correttamente a Tennis Coach AI.
+                if (host.equals("accounts.google.com")
+                        || host.endsWith(".google.com")
+                        || host.endsWith(".googleapis.com")
+                        || host.endsWith(".supabase.co")) {
+
+                    return false;
+                }
+
+                // Link esterni normali
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                    startActivity(intent);
+                    return true;
+                } catch (Exception e) {
+                    return false;
+                }
             }
         });
 
-        if (savedInstanceState == null) webView.loadUrl(APP_URL);
+        if (savedInstanceState == null) {
+            webView.loadUrl(APP_URL);
+        }
 
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override public void handleOnBackPressed() {
-                if (webView.canGoBack()) webView.goBack(); else finish();
-            }
-        });
+        getOnBackPressedDispatcher().addCallback(
+                this,
+                new OnBackPressedCallback(true) {
+                    @Override
+                    public void handleOnBackPressed() {
+                        if (webView.canGoBack()) {
+                            webView.goBack();
+                        } else {
+                            finish();
+                        }
+                    }
+                });
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        webView.saveState(outState);
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        webView.restoreState(savedInstanceState);
     }
 }
