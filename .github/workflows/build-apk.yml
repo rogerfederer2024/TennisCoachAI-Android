@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android Release
 
 on:
   workflow_dispatch:
@@ -8,25 +8,49 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
-      - name: Upload APK
+
+      - name: Restore signing keystore
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/tenniscoachai-upload.jks"
+
+      - name: Build signed Release APK and AAB
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/tenniscoachai-upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle assembleRelease bundleRelease --no-daemon
+
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TennisCoachAI-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: TennisCoachAI-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload Google Play AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: TennisCoachAI-google-play-aab
+          path: app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
