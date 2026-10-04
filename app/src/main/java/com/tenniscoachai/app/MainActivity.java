@@ -3,6 +3,7 @@ package com.tenniscoachai.app;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -32,9 +33,23 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
 
+        // Mantiene correttamente i cookie durante
+        // autenticazione Google / Supabase nella WebView.
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        CookieManager.setAcceptThirdPartyCookies(webView, true);
+
         webView.setWebChromeClient(new WebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+
+                // Salva i cookie dopo i passaggi di login/callback.
+                CookieManager.getInstance().flush();
+            }
 
             @Override
             public boolean shouldOverrideUrlLoading(
@@ -48,27 +63,24 @@ public class MainActivity extends AppCompatActivity {
                     return false;
                 }
 
-                // Tennis Coach AI: resta sempre dentro l'app
+                // Tennis Coach AI resta dentro l'app.
                 if (host.equals("tenniscoachai.it")
                         || host.equals("www.tenniscoachai.it")
                         || host.equals("ai-tennis-coach.netlify.app")
                         || host.endsWith(".netlify.app")) {
-
                     return false;
                 }
 
-                // Autenticazione Google / Supabase:
-                // rimane nella WebView così il callback può
-                // tornare correttamente a Tennis Coach AI.
+                // Google / Supabase restano nella WebView
+                // per completare correttamente l'autenticazione.
                 if (host.equals("accounts.google.com")
                         || host.endsWith(".google.com")
                         || host.endsWith(".googleapis.com")
                         || host.endsWith(".supabase.co")) {
-
                     return false;
                 }
 
-                // Link esterni normali
+                // Gli altri link vengono aperti esternamente.
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW, uri);
                     startActivity(intent);
