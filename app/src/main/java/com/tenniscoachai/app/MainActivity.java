@@ -37,8 +37,7 @@ public class MainActivity extends AppCompatActivity {
         // autenticazione Google / Supabase nella WebView.
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
-        CookieManager.setAcceptThirdPartyCookies(webView, true);
-
+        cookieManager.setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
