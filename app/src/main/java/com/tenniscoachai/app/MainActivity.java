@@ -1,8 +1,12 @@
 package com.tenniscoachai.app;
 
 import android.content.Intent;
+import android.graphics.Insets;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
+import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -25,6 +29,56 @@ public class MainActivity extends AppCompatActivity {
         webView = new WebView(this);
         setContentView(webView);
 
+        /*
+         * SAFE AREA SUPERIORE
+         *
+         * Impedisce alla parte superiore di Tennis Coach AI
+         * di finire sotto la status bar o sotto il foro/notch
+         * della fotocamera.
+         *
+         * Non aggiungiamo padding inferiore, così la barra
+         * inferiore dell'app rimane invariata.
+         */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+
+            webView.setOnApplyWindowInsetsListener((View view, WindowInsets windowInsets) -> {
+
+                Insets safeInsets = windowInsets.getInsets(
+                        WindowInsets.Type.statusBars()
+                                | WindowInsets.Type.displayCutout()
+                );
+
+                view.setPadding(
+                        0,
+                        safeInsets.top,
+                        0,
+                        0
+                );
+
+                return windowInsets;
+            });
+
+            webView.requestApplyInsets();
+
+        } else {
+
+            webView.setOnApplyWindowInsetsListener((View view, WindowInsets windowInsets) -> {
+
+                int topInset = windowInsets.getSystemWindowInsetTop();
+
+                view.setPadding(
+                        0,
+                        topInset,
+                        0,
+                        0
+                );
+
+                return windowInsets;
+            });
+
+            webView.requestApplyInsets();
+        }
+
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -38,6 +92,7 @@ public class MainActivity extends AppCompatActivity {
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
+
         webView.setWebChromeClient(new WebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
@@ -67,6 +122,7 @@ public class MainActivity extends AppCompatActivity {
                         || host.equals("www.tenniscoachai.it")
                         || host.equals("ai-tennis-coach.netlify.app")
                         || host.endsWith(".netlify.app")) {
+
                     return false;
                 }
 
@@ -76,6 +132,7 @@ public class MainActivity extends AppCompatActivity {
                         || host.endsWith(".google.com")
                         || host.endsWith(".googleapis.com")
                         || host.endsWith(".supabase.co")) {
+
                     return false;
                 }
 
@@ -84,6 +141,7 @@ public class MainActivity extends AppCompatActivity {
                     Intent intent = new Intent(Intent.ACTION_VIEW, uri);
                     startActivity(intent);
                     return true;
+
                 } catch (Exception e) {
                     return false;
                 }
@@ -94,18 +152,26 @@ public class MainActivity extends AppCompatActivity {
             webView.loadUrl(APP_URL);
         }
 
+        /*
+         * Pulsante INDIETRO Android.
+         * Se esiste una pagina precedente nella WebView torna indietro,
+         * altrimenti chiude l'app.
+         */
         getOnBackPressedDispatcher().addCallback(
                 this,
                 new OnBackPressedCallback(true) {
+
                     @Override
                     public void handleOnBackPressed() {
+
                         if (webView.canGoBack()) {
                             webView.goBack();
                         } else {
                             finish();
                         }
                     }
-                });
+                }
+        );
     }
 
     @Override
