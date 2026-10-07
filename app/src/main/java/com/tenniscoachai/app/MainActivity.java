@@ -1,26 +1,33 @@
 package com.tenniscoachai.app;
 
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.view.View;
 import android.view.WindowInsets;
 import android.webkit.CookieManager;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
-import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String APP_URL = "https://tenniscoachai.it/";
     private WebView webView;
+
+    private ValueCallback<Uri[]> filePathCallback;
+
+    private ActivityResultLauncher<Intent> fileChooserLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -29,160 +36,308 @@ public class MainActivity extends AppCompatActivity {
         webView = new WebView(this);
         setContentView(webView);
 
-        /*
-         * SAFE AREA SUPERIORE
-         *
-         * Impedisce alla parte superiore di Tennis Coach AI
-         * di finire sotto la status bar o sotto il foro/notch
-         * della fotocamera.
-         *
-         * Non aggiungiamo padding inferiore, così la barra
-         * inferiore dell'app rimane invariata.
-         */
+        // =========================================================
+        // SAFE AREA ANDROID
+        // Evita sovrapposizione con status bar / fotocamera
+        // =========================================================
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 
-            webView.setOnApplyWindowInsetsListener((View view, WindowInsets windowInsets) -> {
+            webView.setOnApplyWindowInsetsListener(
+                    (View view, WindowInsets windowInsets) -> {
 
-                Insets safeInsets = windowInsets.getInsets(
-                        WindowInsets.Type.statusBars()
-                                | WindowInsets.Type.displayCutout()
-                );
+                        Insets safeInsets = windowInsets.getInsets(
+                                WindowInsets.Type.statusBars()
+                                        | WindowInsets.Type.displayCutout()
+                        );
 
-                view.setPadding(
-                        0,
-                        safeInsets.top,
-                        0,
-                        0
-                );
+                        view.setPadding(0, safeInsets.top, 0, 0);
 
-                return windowInsets;
-            });
+                        return windowInsets;
+                    }
+            );
 
             webView.requestApplyInsets();
 
         } else {
 
-            webView.setOnApplyWindowInsetsListener((View view, WindowInsets windowInsets) -> {
+            webView.setOnApplyWindowInsetsListener(
+                    (View view, WindowInsets windowInsets) -> {
 
-                int topInset = windowInsets.getSystemWindowInsetTop();
+                        int topInset =
+                                windowInsets.getSystemWindowInsetTop();
 
-                view.setPadding(
-                        0,
-                        topInset,
-                        0,
-                        0
-                );
+                        view.setPadding(0, topInset, 0, 0);
 
-                return windowInsets;
-            });
+                        return windowInsets;
+                    }
+            );
 
             webView.requestApplyInsets();
         }
 
+        // =========================================================
+        // FILE CHOOSER
+        // Riceve il video scelto dall'utente
+        // =========================================================
+        fileChooserLauncher =
+                registerForActivityResult(
+                        new ActivityResultContracts.StartActivityForResult(),
+                        result -> {
+
+                            if (filePathCallback == null) {
+                                return;
+                            }
+
+                            Uri[] results = null;
+
+                            if (result.getResultCode() == RESULT_OK) {
+
+                                Intent data = result.getData();
+
+                                if (data != null) {
+
+                                    if (data.getClipData() != null) {
+
+                                        int count =
+                                                data.getClipData()
+                                                        .getItemCount();
+
+                                        results = new Uri[count];
+
+                                        for (int i = 0; i < count; i++) {
+
+                                            results[i] =
+                                                    data.getClipData()
+                                                            .getItemAt(i)
+                                                            .getUri();
+                                        }
+
+                                    } else if (data.getData() != null) {
+
+                                        results =
+                                                new Uri[]{
+                                                        data.getData()
+                                                };
+                                    }
+                                }
+                            }
+
+                            filePathCallback.onReceiveValue(results);
+                            filePathCallback = null;
+                        }
+                );
+
+        // =========================================================
+        // WEBVIEW SETTINGS
+        // =========================================================
         WebSettings settings = webView.getSettings();
+
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
 
-        // Mantiene correttamente i cookie durante
-        // autenticazione Google / Supabase nella WebView.
-        CookieManager cookieManager = CookieManager.getInstance();
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(false);
+
+        // =========================================================
+        // COOKIE
+        // Necessari per login Google / Supabase
+        // =========================================================
+        CookieManager cookieManager =
+                CookieManager.getInstance();
+
         cookieManager.setAcceptCookie(true);
-        cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-        webView.setWebChromeClient(new WebChromeClient());
-
-        webView.setWebViewClient(new WebViewClient() {
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-
-                // Salva i cookie dopo i passaggi di login/callback.
-                CookieManager.getInstance().flush();
-            }
-
-            @Override
-            public boolean shouldOverrideUrlLoading(
-                    WebView view,
-                    WebResourceRequest request) {
-
-                Uri uri = request.getUrl();
-                String host = uri.getHost();
-
-                if (host == null) {
-                    return false;
-                }
-
-                // Tennis Coach AI resta dentro l'app.
-                if (host.equals("tenniscoachai.it")
-                        || host.equals("www.tenniscoachai.it")
-                        || host.equals("ai-tennis-coach.netlify.app")
-                        || host.endsWith(".netlify.app")) {
-
-                    return false;
-                }
-
-                // Google / Supabase restano nella WebView
-                // per completare correttamente l'autenticazione.
-                if (host.equals("accounts.google.com")
-                        || host.endsWith(".google.com")
-                        || host.endsWith(".googleapis.com")
-                        || host.endsWith(".supabase.co")) {
-
-                    return false;
-                }
-
-                // Gli altri link vengono aperti esternamente.
-                try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-                    startActivity(intent);
-                    return true;
-
-                } catch (Exception e) {
-                    return false;
-                }
-            }
-        });
-
-        if (savedInstanceState == null) {
-            webView.loadUrl(APP_URL);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.setAcceptThirdPartyCookies(webView, true);
         }
 
-        /*
-         * Pulsante INDIETRO Android.
-         * Se esiste una pagina precedente nella WebView torna indietro,
-         * altrimenti chiude l'app.
-         */
-        getOnBackPressedDispatcher().addCallback(
-                this,
-                new OnBackPressedCallback(true) {
+        // =========================================================
+        // FILE / VIDEO CHOOSER
+        // =========================================================
+        webView.setWebChromeClient(
+                new WebChromeClient() {
 
                     @Override
-                    public void handleOnBackPressed() {
+                    public boolean onShowFileChooser(
+                            WebView webView,
+                            ValueCallback<Uri[]> filePathCallbackNew,
+                            FileChooserParams fileChooserParams) {
 
-                        if (webView.canGoBack()) {
-                            webView.goBack();
-                        } else {
-                            finish();
+                        // Chiude eventuale richiesta precedente
+                        if (filePathCallback != null) {
+                            filePathCallback.onReceiveValue(null);
+                        }
+
+                        filePathCallback = filePathCallbackNew;
+
+                        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+                        // Video
+                        intent.setType("video/*");
+
+                        intent.putExtra(
+                                Intent.EXTRA_ALLOW_MULTIPLE,
+                                false
+                        );
+
+                        try {
+
+                            fileChooserLauncher.launch(intent);
+
+                            return true;
+
+                        } catch (ActivityNotFoundException e) {
+
+                            filePathCallback = null;
+
+                            return false;
                         }
                     }
                 }
         );
+
+        // =========================================================
+        // NAVIGAZIONE
+        // Mantiene Tennis Coach AI, Google e Supabase nella WebView
+        // =========================================================
+        webView.setWebViewClient(
+                new WebViewClient() {
+
+                    @Override
+                    public boolean shouldOverrideUrlLoading(
+                            WebView view,
+                            WebResourceRequest request) {
+
+                        Uri uri = request.getUrl();
+
+                        String host = uri.getHost();
+
+                        if (host == null) {
+                            return false;
+                        }
+
+                        host = host.toLowerCase();
+
+                        if (
+                                host.equals("tenniscoachai.it")
+                                        || host.endsWith(".tenniscoachai.it")
+                                        || host.equals("ai-tennis-coach.netlify.app")
+                                        || host.endsWith(".netlify.app")
+                                        || host.equals("accounts.google.com")
+                                        || host.endsWith(".google.com")
+                                        || host.endsWith(".googleusercontent.com")
+                                        || host.endsWith(".supabase.co")
+                        ) {
+
+                            return false;
+                        }
+
+                        try {
+
+                            Intent intent =
+                                    new Intent(
+                                            Intent.ACTION_VIEW,
+                                            uri
+                                    );
+
+                            startActivity(intent);
+
+                        } catch (Exception ignored) {
+                        }
+
+                        return true;
+                    }
+
+                    @Override
+                    public boolean shouldOverrideUrlLoading(
+                            WebView view,
+                            String url) {
+
+                        Uri uri = Uri.parse(url);
+
+                        String host = uri.getHost();
+
+                        if (host == null) {
+                            return false;
+                        }
+
+                        host = host.toLowerCase();
+
+                        if (
+                                host.equals("tenniscoachai.it")
+                                        || host.endsWith(".tenniscoachai.it")
+                                        || host.equals("ai-tennis-coach.netlify.app")
+                                        || host.endsWith(".netlify.app")
+                                        || host.equals("accounts.google.com")
+                                        || host.endsWith(".google.com")
+                                        || host.endsWith(".googleusercontent.com")
+                                        || host.endsWith(".supabase.co")
+                        ) {
+
+                            return false;
+                        }
+
+                        try {
+
+                            Intent intent =
+                                    new Intent(
+                                            Intent.ACTION_VIEW,
+                                            uri
+                                    );
+
+                            startActivity(intent);
+
+                        } catch (Exception ignored) {
+                        }
+
+                        return true;
+                    }
+                }
+        );
+
+        // =========================================================
+        // RIPRISTINO STATO / APERTURA APP
+        // =========================================================
+        if (savedInstanceState == null) {
+
+            webView.loadUrl("https://tenniscoachai.it/");
+
+        } else {
+
+            webView.restoreState(savedInstanceState);
+        }
     }
 
+    // =============================================================
+    // SALVATAGGIO STATO WEBVIEW
+    // =============================================================
     @Override
     protected void onSaveInstanceState(Bundle outState) {
+
         webView.saveState(outState);
+
         super.onSaveInstanceState(outState);
     }
 
+    // =============================================================
+    // TASTO INDIETRO
+    // =============================================================
     @Override
-    protected void onRestoreInstanceState(Bundle savedInstanceState) {
-        super.onRestoreInstanceState(savedInstanceState);
-        webView.restoreState(savedInstanceState);
+    public void onBackPressed() {
+
+        if (webView != null && webView.canGoBack()) {
+
+            webView.goBack();
+
+        } else {
+
+            super.onBackPressed();
+        }
     }
 }
