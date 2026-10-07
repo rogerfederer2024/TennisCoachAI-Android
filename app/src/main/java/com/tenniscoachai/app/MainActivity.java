@@ -6,7 +6,6 @@ import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.MediaStore;
 import android.view.View;
 import android.view.WindowInsets;
 import android.webkit.CookieManager;
@@ -25,14 +24,19 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
 
+    // Callback usato dalla pagina web per ricevere il video selezionato
     private ValueCallback<Uri[]> filePathCallback;
 
+    // Selettore file Android
     private ActivityResultLauncher<Intent> fileChooserLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // =========================================================
+        // CREA WEBVIEW
+        // =========================================================
         webView = new WebView(this);
         setContentView(webView);
 
@@ -50,7 +54,12 @@ public class MainActivity extends AppCompatActivity {
                                         | WindowInsets.Type.displayCutout()
                         );
 
-                        view.setPadding(0, safeInsets.top, 0, 0);
+                        view.setPadding(
+                                0,
+                                safeInsets.top,
+                                0,
+                                0
+                        );
 
                         return windowInsets;
                     }
@@ -66,7 +75,12 @@ public class MainActivity extends AppCompatActivity {
                         int topInset =
                                 windowInsets.getSystemWindowInsetTop();
 
-                        view.setPadding(0, topInset, 0, 0);
+                        view.setPadding(
+                                0,
+                                topInset,
+                                0,
+                                0
+                        );
 
                         return windowInsets;
                     }
@@ -76,8 +90,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // =========================================================
-        // FILE CHOOSER
-        // Riceve il video scelto dall'utente
+        // RISULTATO DEL SELETTORE VIDEO
         // =========================================================
         fileChooserLauncher =
                 registerForActivityResult(
@@ -96,6 +109,7 @@ public class MainActivity extends AppCompatActivity {
 
                                 if (data != null) {
 
+                                    // Nel caso Android restituisca più file
                                     if (data.getClipData() != null) {
 
                                         int count =
@@ -114,21 +128,24 @@ public class MainActivity extends AppCompatActivity {
 
                                     } else if (data.getData() != null) {
 
-                                        results =
-                                                new Uri[]{
-                                                        data.getData()
-                                                };
+                                        // Singolo video
+                                        results = new Uri[]{
+                                                data.getData()
+                                        };
                                     }
                                 }
                             }
 
+                            // Restituisce il video direttamente
+                            // alla pagina Analisi Video AI
                             filePathCallback.onReceiveValue(results);
+
                             filePathCallback = null;
                         }
                 );
 
         // =========================================================
-        // WEBVIEW SETTINGS
+        // IMPOSTAZIONI WEBVIEW
         // =========================================================
         WebSettings settings = webView.getSettings();
 
@@ -144,7 +161,7 @@ public class MainActivity extends AppCompatActivity {
 
         // =========================================================
         // COOKIE
-        // Necessari per login Google / Supabase
+        // Necessari per Google Login e Supabase
         // =========================================================
         CookieManager cookieManager =
                 CookieManager.getInstance();
@@ -152,11 +169,15 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptCookie(true);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cookieManager.setAcceptThirdPartyCookies(webView, true);
+
+            cookieManager.setAcceptThirdPartyCookies(
+                    webView,
+                    true
+            );
         }
 
         // =========================================================
-        // FILE / VIDEO CHOOSER
+        // SELETTORE VIDEO
         // =========================================================
         webView.setWebChromeClient(
                 new WebChromeClient() {
@@ -164,21 +185,28 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public boolean onShowFileChooser(
                             WebView webView,
-                            ValueCallback<Uri[]> filePathCallbackNew,
+                            ValueCallback<Uri[]> newFilePathCallback,
                             FileChooserParams fileChooserParams) {
 
-                        // Chiude eventuale richiesta precedente
+                        // Chiude una eventuale richiesta precedente
                         if (filePathCallback != null) {
+
                             filePathCallback.onReceiveValue(null);
                         }
 
-                        filePathCallback = filePathCallbackNew;
+                        filePathCallback =
+                                newFilePathCallback;
 
-                        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                        Intent intent =
+                                new Intent(
+                                        Intent.ACTION_OPEN_DOCUMENT
+                                );
 
-                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.addCategory(
+                                Intent.CATEGORY_OPENABLE
+                        );
 
-                        // Video
+                        // Mostra solamente video
                         intent.setType("video/*");
 
                         intent.putExtra(
@@ -203,8 +231,7 @@ public class MainActivity extends AppCompatActivity {
         );
 
         // =========================================================
-        // NAVIGAZIONE
-        // Mantiene Tennis Coach AI, Google e Supabase nella WebView
+        // NAVIGAZIONE WEBVIEW
         // =========================================================
         webView.setWebViewClient(
                 new WebViewClient() {
@@ -214,44 +241,9 @@ public class MainActivity extends AppCompatActivity {
                             WebView view,
                             WebResourceRequest request) {
 
-                        Uri uri = request.getUrl();
-
-                        String host = uri.getHost();
-
-                        if (host == null) {
-                            return false;
-                        }
-
-                        host = host.toLowerCase();
-
-                        if (
-                                host.equals("tenniscoachai.it")
-                                        || host.endsWith(".tenniscoachai.it")
-                                        || host.equals("ai-tennis-coach.netlify.app")
-                                        || host.endsWith(".netlify.app")
-                                        || host.equals("accounts.google.com")
-                                        || host.endsWith(".google.com")
-                                        || host.endsWith(".googleusercontent.com")
-                                        || host.endsWith(".supabase.co")
-                        ) {
-
-                            return false;
-                        }
-
-                        try {
-
-                            Intent intent =
-                                    new Intent(
-                                            Intent.ACTION_VIEW,
-                                            uri
-                                    );
-
-                            startActivity(intent);
-
-                        } catch (Exception ignored) {
-                        }
-
-                        return true;
+                        return handleUrl(
+                                request.getUrl()
+                        );
                     }
 
                     @Override
@@ -259,7 +251,12 @@ public class MainActivity extends AppCompatActivity {
                             WebView view,
                             String url) {
 
-                        Uri uri = Uri.parse(url);
+                        return handleUrl(
+                                Uri.parse(url)
+                        );
+                    }
+
+                    private boolean handleUrl(Uri uri) {
 
                         String host = uri.getHost();
 
@@ -269,6 +266,7 @@ public class MainActivity extends AppCompatActivity {
 
                         host = host.toLowerCase();
 
+                        // Questi domini rimangono dentro l'app
                         if (
                                 host.equals("tenniscoachai.it")
                                         || host.endsWith(".tenniscoachai.it")
@@ -283,6 +281,7 @@ public class MainActivity extends AppCompatActivity {
                             return false;
                         }
 
+                        // Altri link: browser/app esterna
                         try {
 
                             Intent intent =
@@ -302,36 +301,26 @@ public class MainActivity extends AppCompatActivity {
         );
 
         // =========================================================
-        // RIPRISTINO STATO / APERTURA APP
+        // APRE TENNIS COACH AI
+        //
+        // Non utilizziamo restoreState() durante il ritorno
+        // dal selettore video.
         // =========================================================
-        if (savedInstanceState == null) {
-
-            webView.loadUrl("https://tenniscoachai.it/");
-
-        } else {
-
-            webView.restoreState(savedInstanceState);
-        }
+        webView.loadUrl(
+                "https://tenniscoachai.it/"
+        );
     }
 
     // =============================================================
-    // SALVATAGGIO STATO WEBVIEW
-    // =============================================================
-    @Override
-    protected void onSaveInstanceState(Bundle outState) {
-
-        webView.saveState(outState);
-
-        super.onSaveInstanceState(outState);
-    }
-
-    // =============================================================
-    // TASTO INDIETRO
+    // TASTO INDIETRO ANDROID
     // =============================================================
     @Override
     public void onBackPressed() {
 
-        if (webView != null && webView.canGoBack()) {
+        if (
+                webView != null
+                        && webView.canGoBack()
+        ) {
 
             webView.goBack();
 
