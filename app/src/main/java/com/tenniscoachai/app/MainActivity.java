@@ -1,3 +1,4 @@
+
 package com.tenniscoachai.app;
 
 import android.content.ActivityNotFoundException;
@@ -12,6 +13,7 @@ import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -31,11 +33,7 @@ import java.io.OutputStream;
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
-
-    // Callback usato dalla pagina web per ricevere il video selezionato
     private ValueCallback<Uri[]> filePathCallback;
-
-    // Selettore file Android
     private ActivityResultLauncher<Intent> fileChooserLauncher;
 
     @Override
@@ -43,14 +41,26 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         // =========================================================
+        // TASTIERA ANDROID
+        // =========================================================
+        getWindow().setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        );
+
+        // =========================================================
         // CREA WEBVIEW
         // =========================================================
         webView = new WebView(this);
         setContentView(webView);
 
+        webView.setFocusable(true);
+        webView.setFocusableInTouchMode(true);
+
         // =========================================================
         // SAFE AREA ANDROID
-        // Evita sovrapposizione con status bar / fotocamera
+        // La finestra si ridimensiona con la tastiera.
+        // Non aggiungiamo il padding della tastiera:
+        // evitiamo di conteggiare due volte lo stesso spazio.
         // =========================================================
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 
@@ -73,19 +83,14 @@ public class MainActivity extends AppCompatActivity {
                     }
             );
 
-            webView.requestApplyInsets();
-
         } else {
 
             webView.setOnApplyWindowInsetsListener(
                     (View view, WindowInsets windowInsets) -> {
 
-                        int topInset =
-                                windowInsets.getSystemWindowInsetTop();
-
                         view.setPadding(
                                 0,
-                                topInset,
+                                windowInsets.getSystemWindowInsetTop(),
                                 0,
                                 0
                         );
@@ -93,12 +98,12 @@ public class MainActivity extends AppCompatActivity {
                         return windowInsets;
                     }
             );
-
-            webView.requestApplyInsets();
         }
 
+        webView.requestApplyInsets();
+
         // =========================================================
-        // RISULTATO DEL SELETTORE VIDEO
+        // RISULTATO SELETTORE VIDEO
         // =========================================================
         fileChooserLauncher =
                 registerForActivityResult(
@@ -119,18 +124,15 @@ public class MainActivity extends AppCompatActivity {
 
                                     if (data.getClipData() != null) {
 
-                                        int count =
-                                                data.getClipData()
-                                                        .getItemCount();
+                                        int count = data.getClipData()
+                                                .getItemCount();
 
                                         results = new Uri[count];
 
                                         for (int i = 0; i < count; i++) {
-
-                                            results[i] =
-                                                    data.getClipData()
-                                                            .getItemAt(i)
-                                                            .getUri();
+                                            results[i] = data.getClipData()
+                                                    .getItemAt(i)
+                                                    .getUri();
                                         }
 
                                     } else if (data.getData() != null) {
@@ -163,16 +165,13 @@ public class MainActivity extends AppCompatActivity {
         settings.setSupportMultipleWindows(false);
 
         // =========================================================
-        // COOKIE
-        // Necessari per Google Login e Supabase
+        // COOKIE GOOGLE LOGIN / SUPABASE
         // =========================================================
-        CookieManager cookieManager =
-                CookieManager.getInstance();
+        CookieManager cookieManager = CookieManager.getInstance();
 
         cookieManager.setAcceptCookie(true);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-
             cookieManager.setAcceptThirdPartyCookies(
                     webView,
                     true
@@ -180,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // =========================================================
-        // BRIDGE ANDROID PER SALVARE LE FOTO
+        // SALVATAGGIO FOTO ANDROID
         // =========================================================
         webView.addJavascriptInterface(
                 new AndroidImageSaver(),
@@ -203,18 +202,13 @@ public class MainActivity extends AppCompatActivity {
                             filePathCallback.onReceiveValue(null);
                         }
 
-                        filePathCallback =
-                                newFilePathCallback;
+                        filePathCallback = newFilePathCallback;
 
-                        Intent intent =
-                                new Intent(
-                                        Intent.ACTION_OPEN_DOCUMENT
-                                );
-
-                        intent.addCategory(
-                                Intent.CATEGORY_OPENABLE
+                        Intent intent = new Intent(
+                                Intent.ACTION_OPEN_DOCUMENT
                         );
 
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
                         intent.setType("video/*");
 
                         intent.putExtra(
@@ -223,14 +217,15 @@ public class MainActivity extends AppCompatActivity {
                         );
 
                         try {
-
                             fileChooserLauncher.launch(intent);
                             return true;
 
                         } catch (ActivityNotFoundException e) {
 
+                            filePathCallback.onReceiveValue(null);
                             filePathCallback = null;
-                            return false;
+
+                            return true;
                         }
                     }
                 }
@@ -249,17 +244,7 @@ public class MainActivity extends AppCompatActivity {
 
                         super.onPageFinished(view, url);
 
-                        /*
-                         * Tennis Coach AI genera le immagini della
-                         * Video Analisi come data:image/jpeg...
-                         *
-                         * Android WebView non gestisce correttamente
-                         * il normale <a download>.
-                         *
-                         * Qui intercettiamo il click e passiamo
-                         * l'immagine al bridge Android.
-                         */
-
+                        // Intercetta download immagini data:image
                         String javascript =
                                 "(function(){" +
                                 "if(window.__tcaiAndroidImageDownload)return;" +
@@ -293,10 +278,7 @@ public class MainActivity extends AppCompatActivity {
                                 "};" +
                                 "})();";
 
-                        view.evaluateJavascript(
-                                javascript,
-                                null
-                        );
+                        view.evaluateJavascript(javascript, null);
                     }
 
                     @Override
@@ -304,9 +286,7 @@ public class MainActivity extends AppCompatActivity {
                             WebView view,
                             WebResourceRequest request) {
 
-                        return handleUrl(
-                                request.getUrl()
-                        );
+                        return handleUrl(request.getUrl());
                     }
 
                     @Override
@@ -314,9 +294,7 @@ public class MainActivity extends AppCompatActivity {
                             WebView view,
                             String url) {
 
-                        return handleUrl(
-                                Uri.parse(url)
-                        );
+                        return handleUrl(Uri.parse(url));
                     }
 
                     private boolean handleUrl(Uri uri) {
@@ -329,7 +307,6 @@ public class MainActivity extends AppCompatActivity {
 
                         host = host.toLowerCase();
 
-                        // Questi domini rimangono dentro l'app
                         if (
                                 host.equals("tenniscoachai.it")
                                         || host.endsWith(".tenniscoachai.it")
@@ -340,18 +317,14 @@ public class MainActivity extends AppCompatActivity {
                                         || host.endsWith(".googleusercontent.com")
                                         || host.endsWith(".supabase.co")
                         ) {
-
                             return false;
                         }
 
-                        // Altri link: browser/app esterna
                         try {
-
-                            Intent intent =
-                                    new Intent(
-                                            Intent.ACTION_VIEW,
-                                            uri
-                                    );
+                            Intent intent = new Intent(
+                                    Intent.ACTION_VIEW,
+                                    uri
+                            );
 
                             startActivity(intent);
 
@@ -364,15 +337,13 @@ public class MainActivity extends AppCompatActivity {
         );
 
         // =========================================================
-        // APRE TENNIS COACH AI
+        // APRE SITO UFFICIALE
         // =========================================================
-        webView.loadUrl(
-                "https://tenniscoachai.it/"
-        );
+        webView.loadUrl("https://tenniscoachai.it/");
     }
 
     // =============================================================
-    // SALVATAGGIO FOTO NATIVO ANDROID
+    // SALVATAGGIO FOTO
     // =============================================================
     private class AndroidImageSaver {
 
@@ -394,17 +365,13 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
 
-                String header =
-                        dataUrl.substring(0, comma);
+                String header = dataUrl.substring(0, comma);
+                String payload = dataUrl.substring(comma + 1);
 
-                String payload =
-                        dataUrl.substring(comma + 1);
-
-                byte[] imageBytes =
-                        Base64.decode(
-                                payload,
-                                Base64.DEFAULT
-                        );
+                byte[] imageBytes = Base64.decode(
+                        payload,
+                        Base64.DEFAULT
+                );
 
                 String mimeType =
                         header.contains("image/png")
@@ -416,11 +383,10 @@ public class MainActivity extends AppCompatActivity {
                                 ? ".png"
                                 : ".jpg";
 
-                String fileName =
-                        sanitizeFileName(
-                                requestedName,
-                                extension
-                        );
+                String fileName = sanitizeFileName(
+                        requestedName,
+                        extension
+                );
 
                 saveImageToDevice(
                         imageBytes,
@@ -450,15 +416,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // =============================================================
-    // SALVA NELLA GALLERIA / IMMAGINI
+    // SALVA IMMAGINI NEL DISPOSITIVO
     // =============================================================
     private void saveImageToDevice(
             byte[] imageBytes,
             String fileName,
             String mimeType) throws Exception {
 
-        ContentValues values =
-                new ContentValues();
+        ContentValues values = new ContentValues();
 
         values.put(
                 MediaStore.Images.Media.DISPLAY_NAME,
@@ -470,14 +435,7 @@ public class MainActivity extends AppCompatActivity {
                 mimeType
         );
 
-        /*
-         * L'app ha minSdk 24.
-         *
-         * Su Android 10+ possiamo usare RELATIVE_PATH
-         * senza richiedere permessi di archiviazione.
-         */
-        if (Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 
             values.put(
                     MediaStore.Images.Media.RELATIVE_PATH,
@@ -491,12 +449,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        Uri uri =
-                getContentResolver().insert(
-                        MediaStore.Images.Media
-                                .EXTERNAL_CONTENT_URI,
-                        values
-                );
+        Uri uri = getContentResolver().insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                values
+        );
 
         if (uri == null) {
             throw new Exception(
@@ -506,8 +462,7 @@ public class MainActivity extends AppCompatActivity {
 
         try (
                 OutputStream outputStream =
-                        getContentResolver()
-                                .openOutputStream(uri)
+                        getContentResolver().openOutputStream(uri)
         ) {
 
             if (outputStream == null) {
@@ -520,11 +475,9 @@ public class MainActivity extends AppCompatActivity {
             outputStream.flush();
         }
 
-        if (Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 
-            ContentValues completed =
-                    new ContentValues();
+            ContentValues completed = new ContentValues();
 
             completed.put(
                     MediaStore.Images.Media.IS_PENDING,
@@ -549,13 +502,11 @@ public class MainActivity extends AppCompatActivity {
 
         String name = requestedName;
 
-        if (name == null ||
-                name.trim().isEmpty()) {
+        if (name == null || name.trim().isEmpty()) {
 
-            name =
-                    "TennisCoachAI_"
-                            + System.currentTimeMillis()
-                            + extension;
+            name = "TennisCoachAI_"
+                    + System.currentTimeMillis()
+                    + extension;
         }
 
         name = name.replaceAll(
@@ -563,15 +514,13 @@ public class MainActivity extends AppCompatActivity {
                 "_"
         );
 
-        String lower =
-                name.toLowerCase();
+        String lower = name.toLowerCase();
 
         if (
                 !lower.endsWith(".jpg")
                         && !lower.endsWith(".jpeg")
                         && !lower.endsWith(".png")
         ) {
-
             name += extension;
         }
 
@@ -584,10 +533,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
 
-        if (
-                webView != null
-                        && webView.canGoBack()
-        ) {
+        if (webView != null && webView.canGoBack()) {
 
             webView.goBack();
 
