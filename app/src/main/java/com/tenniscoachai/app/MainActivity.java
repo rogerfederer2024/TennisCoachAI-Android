@@ -12,6 +12,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
@@ -40,71 +41,71 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // =========================================================
         // TASTIERA ANDROID
-        // =========================================================
         getWindow().setSoftInputMode(
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         );
 
-        // =========================================================
-        // CREA WEBVIEW
-        // =========================================================
+        // WEBVIEW E CONTENITORE
+        FrameLayout root = new FrameLayout(this);
         webView = new WebView(this);
-        setContentView(webView);
+
+        root.addView(webView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        setContentView(root);
 
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
 
-        // =========================================================
-        // SAFE AREA ANDROID
-        // La finestra si ridimensiona con la tastiera.
-        // Non aggiungiamo il padding della tastiera:
-        // evitiamo di conteggiare due volte lo stesso spazio.
-        // =========================================================
+        // GESTIONE TASTIERA SAMSUNG / ANDROID 11+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 
-            webView.setOnApplyWindowInsetsListener(
-                    (View view, WindowInsets windowInsets) -> {
+            getWindow().setDecorFitsSystemWindows(false);
 
-                        Insets safeInsets = windowInsets.getInsets(
-                                WindowInsets.Type.statusBars()
-                                        | WindowInsets.Type.displayCutout()
-                        );
+            root.setOnApplyWindowInsetsListener((view, insets) -> {
 
-                        view.setPadding(
-                                0,
-                                safeInsets.top,
-                                0,
-                                0
-                        );
+                Insets system = insets.getInsets(
+                        WindowInsets.Type.statusBars()
+                                | WindowInsets.Type.displayCutout()
+                );
 
-                        return windowInsets;
-                    }
-            );
+                Insets nav = insets.getInsets(
+                        WindowInsets.Type.navigationBars()
+                );
+
+                Insets ime = insets.getInsets(
+                        WindowInsets.Type.ime()
+                );
+
+                int bottom = Math.max(nav.bottom, ime.bottom);
+
+                if (view.getPaddingTop() != system.top
+                        || view.getPaddingBottom() != bottom) {
+
+                    view.setPadding(
+                            0,
+                            system.top,
+                            0,
+                            bottom
+                    );
+                }
+
+                return insets;
+            });
+
+            root.requestApplyInsets();
 
         } else {
 
-            webView.setOnApplyWindowInsetsListener(
-                    (View view, WindowInsets windowInsets) -> {
-
-                        view.setPadding(
-                                0,
-                                windowInsets.getSystemWindowInsetTop(),
-                                0,
-                                0
-                        );
-
-                        return windowInsets;
-                    }
+            getWindow().setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
             );
         }
 
-        webView.requestApplyInsets();
-
-        // =========================================================
-        // RISULTATO SELETTORE VIDEO
-        // =========================================================
+        // SELETTORE VIDEO
         fileChooserLauncher =
                 registerForActivityResult(
                         new ActivityResultContracts.StartActivityForResult(),
@@ -130,6 +131,7 @@ public class MainActivity extends AppCompatActivity {
                                         results = new Uri[count];
 
                                         for (int i = 0; i < count; i++) {
+
                                             results[i] = data.getClipData()
                                                     .getItemAt(i)
                                                     .getUri();
@@ -149,9 +151,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                 );
 
-        // =========================================================
         // IMPOSTAZIONI WEBVIEW
-        // =========================================================
         WebSettings settings = webView.getSettings();
 
         settings.setJavaScriptEnabled(true);
@@ -164,31 +164,26 @@ public class MainActivity extends AppCompatActivity {
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setSupportMultipleWindows(false);
 
-        // =========================================================
         // COOKIE GOOGLE LOGIN / SUPABASE
-        // =========================================================
         CookieManager cookieManager = CookieManager.getInstance();
 
         cookieManager.setAcceptCookie(true);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+
             cookieManager.setAcceptThirdPartyCookies(
                     webView,
                     true
             );
         }
 
-        // =========================================================
         // SALVATAGGIO FOTO ANDROID
-        // =========================================================
         webView.addJavascriptInterface(
                 new AndroidImageSaver(),
                 "AndroidImageSaver"
         );
 
-        // =========================================================
         // SELETTORE VIDEO
-        // =========================================================
         webView.setWebChromeClient(
                 new WebChromeClient() {
 
@@ -208,7 +203,10 @@ public class MainActivity extends AppCompatActivity {
                                 Intent.ACTION_OPEN_DOCUMENT
                         );
 
-                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.addCategory(
+                                Intent.CATEGORY_OPENABLE
+                        );
+
                         intent.setType("video/*");
 
                         intent.putExtra(
@@ -217,6 +215,7 @@ public class MainActivity extends AppCompatActivity {
                         );
 
                         try {
+
                             fileChooserLauncher.launch(intent);
                             return true;
 
@@ -231,9 +230,7 @@ public class MainActivity extends AppCompatActivity {
                 }
         );
 
-        // =========================================================
         // NAVIGAZIONE WEBVIEW
-        // =========================================================
         webView.setWebViewClient(
                 new WebViewClient() {
 
@@ -244,7 +241,7 @@ public class MainActivity extends AppCompatActivity {
 
                         super.onPageFinished(view, url);
 
-                        // Intercetta download immagini data:image
+                        // Download immagini data:image
                         String javascript =
                                 "(function(){" +
                                 "if(window.__tcaiAndroidImageDownload)return;" +
@@ -321,6 +318,7 @@ public class MainActivity extends AppCompatActivity {
                         }
 
                         try {
+
                             Intent intent = new Intent(
                                     Intent.ACTION_VIEW,
                                     uri
@@ -336,15 +334,11 @@ public class MainActivity extends AppCompatActivity {
                 }
         );
 
-        // =========================================================
-        // APRE SITO UFFICIALE
-        // =========================================================
+        // SITO UFFICIALE
         webView.loadUrl("https://tenniscoachai.it/");
     }
 
-    // =============================================================
     // SALVATAGGIO FOTO
-    // =============================================================
     private class AndroidImageSaver {
 
         @JavascriptInterface
@@ -415,9 +409,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // =============================================================
     // SALVA IMMAGINI NEL DISPOSITIVO
-    // =============================================================
     private void saveImageToDevice(
             byte[] imageBytes,
             String fileName,
@@ -493,9 +485,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // =============================================================
     // NOME FILE SICURO
-    // =============================================================
     private String sanitizeFileName(
             String requestedName,
             String extension) {
@@ -527,9 +517,7 @@ public class MainActivity extends AppCompatActivity {
         return name;
     }
 
-    // =============================================================
     // TASTO INDIETRO ANDROID
-    // =============================================================
     @Override
     public void onBackPressed() {
 
