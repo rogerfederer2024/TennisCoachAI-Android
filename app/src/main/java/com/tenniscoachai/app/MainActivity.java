@@ -12,7 +12,6 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
-import android.widget.FrameLayout;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
@@ -23,6 +22,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -334,8 +334,8 @@ public class MainActivity extends AppCompatActivity {
                 }
         );
 
-        // SITO UFFICIALE
-        webView.loadUrl("https://tenniscoachai.it/");
+        // TENNIS COACH AI - ACCESSO DIRETTO ALL'APP
+        webView.loadUrl("https://tenniscoachai.it/app/");
     }
 
     // SALVATAGGIO FOTO
