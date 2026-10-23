@@ -1,9 +1,10 @@
+
 name: Build Android Release
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
@@ -27,10 +28,25 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Restore signing keystore
+      - name: Restore and validate signing keystore
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/tenniscoachai-upload.jks"
+          set -euo pipefail
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo 'ERRORE: Manca uno dei segreti per la firma Android.' >&2
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/tenniscoachai-upload.jks"
+          test -s "$RUNNER_TEMP/tenniscoachai-upload.jks"
+          keytool -list \
+            -keystore "$RUNNER_TEMP/tenniscoachai-upload.jks" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" > /dev/null
+          echo 'Keystore e alias verificati.'
 
       - name: Build signed Release APK and AAB
         env:
@@ -40,6 +56,23 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle assembleRelease bundleRelease --no-daemon
+
+      - name: Verify APK integrity, signature and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          AAB='app/build/outputs/bundle/release/app-release.aab'
+          test -s "$APK"
+          test -s "$AAB"
+          unzip -tqq "$APK"
+          unzip -tqq "$AAB"
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          test -x "$BUILD_TOOLS/apksigner"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs --min-sdk-version 24 "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E '^(package:|sdkVersion:|targetSdkVersion:)'
+          sha256sum "$APK"
+          echo 'APK integro e firma Android verificata.'
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
