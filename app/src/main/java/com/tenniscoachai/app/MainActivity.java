@@ -12,6 +12,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
@@ -22,12 +23,12 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.browser.customtabs.CustomTabsIntent;
 
 import java.io.OutputStream;
 
@@ -183,6 +184,12 @@ public class MainActivity extends AppCompatActivity {
                 "AndroidImageSaver"
         );
 
+        // Identificazione app Android
+        webView.addJavascriptInterface(
+                new AppEnvironment(),
+                "TennisCoachAIApp"
+        );
+
         // SELETTORE VIDEO
         webView.setWebChromeClient(
                 new WebChromeClient() {
@@ -317,8 +324,36 @@ public class MainActivity extends AppCompatActivity {
                             return false;
                         }
 
-                        try {
+                        // Portale Stripe in scheda Chrome
+                        if (host.equals("billing.stripe.com")) {
+                            try {
+                                CustomTabsIntent tab =
+                                        new CustomTabsIntent.Builder()
+                                                .setShowTitle(true)
+                                                .build();
 
+                                tab.launchUrl(
+                                        MainActivity.this,
+                                        uri
+                                );
+
+                            } catch (Exception e) {
+
+                                try {
+                                    startActivity(
+                                            new Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    uri
+                                            )
+                                    );
+                                } catch (Exception ignored) {
+                                }
+                            }
+
+                            return true;
+                        }
+
+                        try {
                             Intent intent = new Intent(
                                     Intent.ACTION_VIEW,
                                     uri
@@ -334,8 +369,25 @@ public class MainActivity extends AppCompatActivity {
                 }
         );
 
-        // TENNIS COACH AI - ACCESSO DIRETTO ALL'APP
+        // SITO UFFICIALE TENNIS COACH AI
         webView.loadUrl("https://tenniscoachai.it/app/");
+    }
+
+    // RITORNO DAL PORTALE STRIPE
+    // Non ricarica WebView e mantiene la sessione
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+    }
+
+    // IDENTIFICAZIONE APP ANDROID
+    private class AppEnvironment {
+
+        @JavascriptInterface
+        public boolean isNativeAndroid() {
+            return true;
+        }
     }
 
     // SALVATAGGIO FOTO
@@ -517,17 +569,55 @@ public class MainActivity extends AppCompatActivity {
         return name;
     }
 
-    // TASTO INDIETRO ANDROID
+    // FASE 200L - CORREZIONE INDIETRO ANDROID
+    // Non chiude Tennis Coach AI dalla Home
+    // Non esegue logout o reload automatici
+
     @Override
     public void onBackPressed() {
 
+        // Torna alla pagina precedente della WebView
         if (webView != null && webView.canGoBack()) {
 
             webView.goBack();
-
-        } else {
-
-            super.onBackPressed();
+            return;
         }
+
+        Uri current = null;
+
+        try {
+            if (webView != null && webView.getUrl() != null) {
+
+                current = Uri.parse(webView.getUrl());
+            }
+
+        } catch (Exception ignored) {
+        }
+
+        // Se siamo nell'app ufficiale
+        // non chiudere l'Activity
+        if (current != null
+                && "tenniscoachai.it".equalsIgnoreCase(current.getHost())
+                && current.getPath() != null
+                && current.getPath().startsWith("/app")) {
+
+            webView.evaluateJavascript(
+                    "(function(){" +
+                    "if(typeof tcaiBack==='function'){" +
+                    "tcaiBack();return true;" +
+                    "}" +
+                    "if(typeof home==='function'){" +
+                    "home();return true;" +
+                    "}" +
+                    "return false;" +
+                    "})()",
+                    null
+            );
+
+            return;
+        }
+
+        // Comportamento standard fuori dall'app
+        super.onBackPressed();
     }
 }
