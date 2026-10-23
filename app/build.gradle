@@ -1,4 +1,7 @@
-plugins { id 'com.android.application' }
+
+plugins {
+    id 'com.android.application'
+}
 
 android {
     namespace 'com.tenniscoachai.app'
@@ -44,4 +47,5 @@ configurations.all {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.activity:activity:1.9.3'
+    implementation 'androidx.browser:browser:1.8.0'
 }
