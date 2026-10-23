@@ -1,4 +1,3 @@
-            outputStream.write(imageBytes);
             outputStream.flush();
         }
 
